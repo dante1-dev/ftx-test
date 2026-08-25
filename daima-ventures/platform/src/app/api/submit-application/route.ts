@@ -4,6 +4,8 @@ import { getClientIp, lookupIpGeo } from "@/lib/geo";
 import { createAdminClient, logEvent } from "@/lib/admin";
 import { createClientProxy, isSupabaseConfigured } from "@/lib/supabase";
 
+const BLOCKING_STATUSES = ["pending", "under_review", "approved", "active", "disbursed"];
+
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
@@ -40,13 +42,16 @@ export async function POST(request: NextRequest) {
   const loanAmount = Number(String(body.loanAmount).replace(/[^0-9]/g, ""));
   const loanPurpose = String(body.loanPurpose ?? cfg?.purpose ?? "");
 
+  const phoneNumber = String(body.phoneNumber ?? "").trim();
+  const nin = String(body.nin ?? "").trim();
+
   const applicant: Record<string, unknown> = {
     firstName: body.firstName,
     lastName: body.lastName,
     dateOfBirth: body.dateOfBirth,
     gender: body.gender,
-    nin: body.nin ?? null,
-    phoneNumber: body.phoneNumber,
+    nin: nin || null,
+    phoneNumber,
     email: body.email ?? null,
     primaryCrop: body.primaryCrop ?? null,
     farmSize: body.farmSize ?? null,
@@ -67,7 +72,7 @@ export async function POST(request: NextRequest) {
     },
   };
 
-  // Resolve the submitting user (if a session cookie exists)
+  // Resolve logged-in user if available
   const response = NextResponse.next();
   const supabase = createClientProxy(request, response);
   let submittedBy: string | null = null;
@@ -76,6 +81,38 @@ export async function POST(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
     submittedBy = user?.id ?? null;
+  }
+
+  // Build channel-agnostic active application query (Phone, NIN, or User Account)
+  const conditions: string[] = [];
+  if (phoneNumber) {
+    conditions.push(`applicant->>phoneNumber.eq.${phoneNumber}`);
+  }
+  if (nin) {
+    conditions.push(`applicant->>nin.eq.${nin}`);
+  }
+  if (submittedBy) {
+    conditions.push(`user_id.eq.${submittedBy}`);
+    conditions.push(`submitted_by.eq.${submittedBy}`);
+  }
+
+  if (conditions.length > 0) {
+    const { data: existingApps } = await admin
+      .from("applications")
+      .select("id, status")
+      .or(conditions.join(","))
+      .in("status", BLOCKING_STATUSES)
+      .limit(1);
+
+    if (existingApps && existingApps.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "An active application or loan already exists for this phone number, NIN, or user account. You can apply again once your current cycle is completed.",
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const { data, error } = await admin
@@ -92,6 +129,7 @@ export async function POST(request: NextRequest) {
       ip_address: ip,
       geo,
       submitted_by: submittedBy,
+      user_id: submittedBy,
     })
     .select("id")
     .single();

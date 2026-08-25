@@ -44,6 +44,7 @@ export async function logEvent(input: {
     tenant: "daima-ventures",
     type: input.type,
     actor: input.actor ?? null,
+    user_id: input.actor ?? null,
     actor_role: input.actorRole ?? null,
     payload: input.payload ?? {},
     ip_address: input.ip ?? null,

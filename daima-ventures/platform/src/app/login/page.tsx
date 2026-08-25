@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useCallback, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useCallback, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClientBrowser, isSupabaseConfigured } from "@/lib/supabase-client";
 import Image from "next/image";
 import Link from "next/link";
 
 function LoginInner() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const configured = isSupabaseConfigured();
@@ -26,11 +27,24 @@ function LoginInner() {
 
   const displayError = error || paramError;
 
+  // Auto-redirect if an active session exists
+  useEffect(() => {
+    if (!configured) return;
+    const supabase = createClientBrowser();
+    if (!supabase) return;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        router.replace(next);
+      }
+    });
+  }, [configured, next, router]);
+
   const handleGoogle = useCallback(async () => {
     setError(null);
     if (!configured) {
       setError(
-        "Supabase is not configured yet. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable sign in.",
+        "Supabase is not configured yet. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable sign in."
       );
       return;
     }
@@ -40,8 +54,9 @@ function LoginInner() {
       return;
     }
     setPending(true);
-    const base =
-      process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+
+    // Prioritize browser origin so network IP access (e.g., 192.168.248.209) works seamlessly
+    const base = window.location.origin;
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -75,7 +90,7 @@ function LoginInner() {
           </p>
         </div>
 
-        {error && (
+        {displayError && (
           <div className="mb-4 rounded-xl border border-[#f5c6cb] bg-[#f8d7da] px-4 py-3 text-sm text-[#721c24]">
             {displayError}
           </div>

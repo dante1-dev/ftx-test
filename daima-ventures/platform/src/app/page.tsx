@@ -1,9 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
+import { createClientServer, isSupabaseConfigured } from "@/lib/supabase";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const products = [
   {
-    icon: "\u{1F33E}",
+    icon: "🌾",
     title: "Harvest Advance Loans",
     badge: "Available Now",
     badgeClass: "available",
@@ -17,7 +21,7 @@ const products = [
     ],
   },
   {
-    icon: "\u{1F3E2}\u{FE0F}",
+    icon: "🏢",
     title: "Asset Acquisition & Development",
     badge: "Coming Soon",
     badgeClass: "coming-soon",
@@ -31,7 +35,7 @@ const products = [
     ],
   },
   {
-    icon: "\u{1F68C}",
+    icon: "🚌",
     title: "Agricultural Value Chain Loans",
     badge: "Coming Soon",
     badgeClass: "coming-soon",
@@ -69,7 +73,16 @@ const footerSections = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  let user = null;
+  if (isSupabaseConfigured()) {
+    const supabase = await createClientServer();
+    if (supabase) {
+      const { data } = await supabase.auth.getUser();
+      user = data.user;
+    }
+  }
+
   return (
     <main>
       {/* Header */}
@@ -108,12 +121,21 @@ export default function Home() {
                 </a>
               </li>
               <li>
-                <Link
-                  href="/login"
-                  className="rounded-full border border-[#6b8dc4] px-4 py-1.5 text-[#2d4d78] transition-all hover:bg-[#2d4d78] hover:text-white"
-                >
-                  Sign In
-                </Link>
+                {user ? (
+                  <Link
+                    href="/dashboard"
+                    className="rounded-full border border-[#6b8dc4] bg-[#2d4d78] px-4 py-1.5 text-white transition-all hover:bg-[#1f3654]"
+                  >
+                    Dashboard
+                  </Link>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="rounded-full border border-[#6b8dc4] px-4 py-1.5 text-[#2d4d78] transition-all hover:bg-[#2d4d78] hover:text-white"
+                  >
+                    Sign In
+                  </Link>
+                )}
               </li>
             </ul>
           </nav>
